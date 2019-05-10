@@ -1,0 +1,49 @@
+{
+    "sensors": [
+	[12, "Camera", "tir"],
+	[13, "Camera", "hr"],
+	[14, "Camera", "stereo"],
+	[15, "ToF", "tof"],
+	[16, "LIDAR", "lidar"],
+	[17, "Radar", "radar"],
+	[18, "StarTracker", "str"],
+	[19, "IMU", "imu"],
+	[20, "Analog", "tactile"],
+	[21, "Analog", "ft"]
+    ],
+    "modes": [
+	{
+	    "name": "pattern_mode",
+	    "enter": [
+		["hr", "set_sampling", {"period" : 100000}],
+		["hr", "set_exposure", {"shutter": 2000, "gain": 10.0}],
+		["hr", "enable_pattern"],
+		["hr", "start"]
+	    ],
+	    "leave": [
+		["hr", "stop"],
+		["hr", "disable_pattern"]
+	    ]
+	},
+	{
+	    "name": "traverse_mode",
+	    "enter": [
+		["stereo", "set_sampling", {"period": 500000}],
+		["stereo", "set_exposure", {"shutter": 100, "gain": 10.0}],
+		["stereo", "enable_flash", {"strength": 50}],
+		["tof", "set_sampling", {"period": 100000}],
+		["tof", "set_range", {"min_depth": 0.0, "max_depth": 15.0}],
+		["imu", "set_sampling", {"period": 50000, "batch_size": 1}],
+		["stereo", "start"],
+		["tof", "start"],
+		["imu", "start"]
+	    ],
+	    "leave": [
+		["imu", "stop"],
+		["tof", "stop"],
+		["stereo", "stop"],
+		["stereo", "disable_flash"]
+	    ]
+	}
+    ]
+}
