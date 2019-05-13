@@ -1,6 +1,6 @@
 ################################################################################
 ###
-###   Copyright 2018 SINTEF AS
+###   Copyright 2019 SINTEF AS
 ###
 ###   This Source Code Form is subject to the terms of the Mozilla
 ###   Public License, v. 2.0. If a copy of the MPL was not distributed
@@ -9,7 +9,9 @@
 ################################################################################
 
 from time import time
+from datetime import datetime
 from enum import Enum
+from subprocess import Popen, DEVNULL, PIPE
 import i3ds_binding as binding
 
 class State(Enum):
@@ -49,6 +51,8 @@ class Sensor(object):
         self._client = client
         self._client.set_timeout(2000)
         self._last = 0.0
+        self._record = None
+        self._capture = None
 
     def load(self):
         self._client.load_all()
@@ -76,6 +80,32 @@ class Sensor(object):
 
     def stop(self):
         self._client.Stop()
+
+    def _unique_file(self):
+        return "{}_{}".format(self.node, datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
+
+    def record(self, filename = None):
+        if self._record: return
+
+        if filename is None:
+            filename = "node_{}.log".format(self._unique_file())
+
+        self._record = Popen(["i3ds_record", "--node", str(self.node), "--output", filename], stdout=DEVNULL, stderr=DEVNULL)
+
+    def record_stop(self):
+        if self._record:
+            self._record.terminate()
+            self._record.wait()
+            self._record = None
+
+    def capture(self, **args):
+        raise NotImplementedError("Capture not implemented for class {}".format(type(self)))
+
+    def capture_stop(self):
+        if self._capture:
+            self._capture.terminate()
+            self._capture.wait()
+            self._capture = None
 
     def set_sampling(self, period, batch_size = None, batch_count = None):
         if batch_size is None:
@@ -109,6 +139,21 @@ class Camera(RegionSensor):
     flash_strength = Poller("flash_strength")
     pattern_enabled = Poller("pattern_enabled")
     pattern_sequence = Poller("pattern_sequence")
+
+    def capture(self, nogui = False, filename = None, format = None, scale = None):
+        if self._capture: return
+
+        if filename is None:
+            filename = "camera_{}".format(self._unique_file())
+
+        args = ["i3ds_camera_capture", "--node", str(self.node)]
+
+        if nogui: args += ["--nogui"]
+        if filename: args += ["--output", filename]
+        if format: args += ["--format", format]
+        if scale: args += ["--scale", str(scale)]
+
+        self._capture = Popen(args, stdout=DEVNULL, stderr=DEVNULL)
 
     def set_exposure(self, shutter = None, gain = None):
         if shutter is None:
@@ -162,6 +207,21 @@ class ToFCamera(RegionSensor):
     min_depth = Poller("min_depth")
     max_depth = Poller("max_depth")
 
+    def capture(self, nogui = False, filename = None, format = None, scale = None):
+        if self._capture: return
+
+        args = ["i3ds_camera_capture", "--node", str(self.node), "--tof", "1"]
+
+        if filename is None:
+            filename = "tof_{}".format(self._unique_file())
+
+        if nogui: args += ["--nogui"]
+        if filename: args += ["--output", filename]
+        if format: args += ["--format", format]
+        if scale: args += ["--scale", str(scale)]
+
+        self._capture = Popen(args, stdout=DEVNULL, stderr=DEVNULL)
+
     def set_range(self, min_depth = None, max_depth = None):
         if min_depth is None:
             min_depth = self.min_depth
@@ -181,10 +241,54 @@ class LIDAR(RegionSensor):
     pass
 
 class IMU(Sensor):
-    pass
+
+    def __init__(self, client):
+        super().__init__(client)
+        self._capture_file = None
+
+    def capture(self, filename = None):
+
+        if self._capture: return
+
+        if filename is None:
+            filename = "imu_{}.csv".format(self._unique_file())
+
+        self._capture_file = open(filename, "a")
+
+        args = ["i3ds_imu_capture", "--node", str(self.node)]
+
+        self._capture = Popen(args, stdout=self._capture_file, stderr=DEVNULL)
+
+    def capture_stop(self):
+        super().capture_stop()
+        if self._capture_file:
+            self._capture_file.close()
+            self._capture_file = None
 
 class Analog(Sensor):
-    pass
+
+    def __init__(self, client):
+        super().__init__(client)
+        self._capture_file = None
+
+    def capture(self, filename = None):
+
+        if self._capture: return
+
+        if filename is None:
+            filename = "analog_{}.csv".format(self._unique_file())
+
+        self._capture_file = open(filename, "a")
+
+        args = ["i3ds_analog_capture", "--node", str(self.node)]
+
+        self._capture = Popen(args, stdout=self._capture_file, stderr=DEVNULL)
+
+    def capture_stop(self):
+        super().capture_stop()
+        if self._capture_file:
+            self._capture_file.close()
+            self._capture_file = None
 
 class StarTracker(Sensor):
     pass
